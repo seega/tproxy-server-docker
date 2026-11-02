@@ -1,0 +1,14 @@
+# Runtime secrets, identities and generated sources
+.env
+.env.*
+!.env.example
+private/
+upstream/
+
+# Miscellaneous local artefacts
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store
