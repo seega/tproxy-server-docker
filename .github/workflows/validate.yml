@@ -1,0 +1,52 @@
+name: Validate Docker deployment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Bash syntax
+        run: bash -n setup.sh docker/mtproxy-entrypoint.sh
+
+      - name: Run ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck --severity=warning setup.sh docker/mtproxy-entrypoint.sh
+
+      - name: Validate Docker Compose configuration
+        env:
+          TPROXY_HOSTNAME: proxy.example.com
+          PUBLIC_IPV4: 203.0.113.10
+          HOST_UID: "1000"
+          HOST_GID: "1000"
+        run: |
+          docker compose version
+          docker compose -f compose.yaml config --quiet
+
+      - name: Ensure generated secrets are Git-ignored
+        run: |
+          for path in .env private/config.json private/profiles.json private/token.key upstream/go.mod; do
+            if ! git check-ignore --quiet "$path"; then
+              echo "::error::Generated path is not ignored: $path"
+              exit 1
+            fi
+          done
