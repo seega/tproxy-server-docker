@@ -1,0 +1,96 @@
+name: telegram-web-proxy
+
+services:
+  # This container owns the shared network namespace. Only 80/443 are published.
+  # MTProxy's 2398/8888 and the relay's 8080/8081 are NOT published.
+  mtproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.mtproxy
+    restart: unless-stopped
+    init: true
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    environment:
+      PUBLIC_IPV4: ${PUBLIC_IPV4:?Run setup.sh first}
+    volumes:
+      - ./private/profiles.json:/run/tproxy/profiles.json:ro
+      - mtproxy-data:/var/lib/mtproxy
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    security_opt:
+      - no-new-privileges:true
+
+  tproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.tproxy
+    network_mode: "service:mtproxy"
+    depends_on:
+      - mtproxy
+    user: "${HOST_UID:?Run setup.sh first}:${HOST_GID:?Run setup.sh first}"
+    command: ["-config", "/run/tproxy/config.json"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - ./private:/run/tproxy:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/readyz"]
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  nginx:
+    image: nginx:stable-alpine
+    network_mode: "service:mtproxy"
+    depends_on:
+      - mtproxy
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /var/cache/nginx:size=16m,mode=1777
+      - /var/run:size=1m,mode=1777
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./site:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2
+    network_mode: "service:mtproxy"
+    depends_on:
+      tproxy:
+        condition: service_healthy
+      nginx:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    environment:
+      TPROXY_HOSTNAME: ${TPROXY_HOSTNAME:?Run setup.sh first}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mtproxy-data:
+  caddy-data:
+  caddy-config:
