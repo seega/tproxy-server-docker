@@ -1,0 +1,31 @@
+{
+    admin off
+    servers {
+        protocols h1 h2
+        timeouts {
+            read_header 10s
+            read_body 60s
+        }
+    }
+}
+
+{$TPROXY_HOSTNAME} {
+    # All paths go through the relay, including ordinary public site content.
+    encode zstd gzip
+    header {
+        -Via
+        Strict-Transport-Security "max-age=31536000"
+    }
+    reverse_proxy 127.0.0.1:8080 {
+        transport http {
+            response_header_timeout 40s
+        }
+    }
+    handle_errors {
+        header {
+            Cache-Control "no-store"
+            Strict-Transport-Security "max-age=31536000"
+        }
+        respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+    }
+}
