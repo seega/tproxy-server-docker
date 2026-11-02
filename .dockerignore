@@ -1,0 +1,11 @@
+# Build context must contain the upstream Go sources for Dockerfile.tproxy.
+.git
+**/.git
+.env
+.env.*
+private
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
