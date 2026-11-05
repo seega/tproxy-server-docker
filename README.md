@@ -103,6 +103,56 @@ needs at least 65,552 open-file descriptors with the included settings; this
 Compose file sets `ulimits.nofile` to **1,048,576**. Failure without the limit
 looks like `fatal: cannot raise open file limit to 65552`.
 
+## Updating an existing installation (Git clone)
+
+For a server originally installed with `git clone` and initialized once with
+`./setup.sh`, update the running deployment **without regenerating credentials**:
+
+```bash
+cd ~/tproxy-server-docker
+
+# Review local changes before pulling; don't discard your own modifications.
+git status --short
+git pull --ff-only
+
+# Rebuild the local images using the latest base images, then apply changes.
+docker compose build --pull
+docker compose up -d --no-build
+
+# Confirm all services are running and the relay is ready.
+docker compose ps
+docker compose exec -T tproxy wget -qO- http://127.0.0.1:8081/readyz
+```
+
+The readiness request should print `ready`. Also check the public HTTPS site
+and send a message through your Telegram WEB proxy. Updating/recreating the
+containers can briefly disconnect existing proxy sessions.
+
+If you normally manage Docker with `sudo`, prefix **only** the
+`docker compose` commands with `sudo`; run `git pull` as the repository
+owner. If `git pull --ff-only` refuses because you edited tracked files,
+review and resolve those changes first instead of forcing or deleting them.
+
+**Your existing MTProxy secret and proxy link stay unchanged.** `git pull`
+does not replace the ignored `.env` or `private/` directory, and Compose
+mounts these existing files into the containers. The persistent signing key is
+`private/token.key`; Caddy certificates and MTProxy routing data are retained
+in the `caddy-data` and `mtproxy-data` named volumes. Back up credentials
+securely before major changes.
+
+**Do not run `setup.sh` again**, delete `.env` or `private/`, use
+`git clean -fdx`, or execute `docker compose down -v` during an update.
+Those operations may delete credentials, source state or named volumes.
+A normal `docker compose down` without `-v` preserves named volumes.
+
+To also update the separately pulled Caddy and Nginx images, run
+`docker compose pull caddy nginx` before `docker compose up -d --no-build`.
+This updates those services too and may involve additional restarts.
+
+**Note:** `upstream/` contains the pinned `tproxy-server` source checkout
+from the original installation. Updating this packaging repository does not
+automatically change that pinned upstream checkout.
+
 ## Operations
 
 ```bash
